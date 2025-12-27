@@ -1,10 +1,11 @@
 #include "raylib.h"
+#include "GameOfLife.h"
+#include "Constants.h"
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 
-#define N 32
-#define M 64
-
-Vector3 point_on_sphere(float radius, float theta, float phi) {
+Vector3 PointOnSphere(float radius, float theta, float phi) {
     Vector3 pos;
     pos.x = radius * sinf(theta) * cosf(phi);
     pos.y = radius * cosf(theta);
@@ -12,48 +13,10 @@ Vector3 point_on_sphere(float radius, float theta, float phi) {
     return pos;
 }
 
-int countTheNeighbors(int grid[N][M], int theta, int phi)  
-{  
-    int livingNeighborCount = 0;
-    int neighTheta[8] = {theta-1, theta, theta+1, theta-1, theta+1, theta-1, theta, theta+1};
-    int neighPhi[8] = {phi-1, phi-1, phi-1, phi, phi, phi+1, phi+1, phi+1};
-
-    for(int i = 0; i < 8; ++i)  
-    {
-        int nx = (neighTheta[i] + N) % N;
-        int ny = (neighPhi[i] + M) % M;
-        if (grid[nx][ny] == 1)
-            livingNeighborCount++;
-    }
-
-    return livingNeighborCount;
-}
-
-void updateLifeGrid(int grid[N][M]) {
-    int newGrid[N][M];
-    for (int i = 0; i < N; ++i) {
-        for (int j = 0; j < M; ++j) {
-            int neighbors = countTheNeighbors(grid, i, j);
-            if(grid[i][j] == 1 && (neighbors < 2 || neighbors > 3))
-                newGrid[i][j] = 0;
-            else if(neighbors == 3 && grid[i][j] == 0)
-                newGrid[i][j] = 1;
-            else
-                newGrid[i][j] = grid[i][j];
-        }
-    }
-
-    for (int i = 0; i < N; ++i) {
-        for (int j = 0; j < M; ++j) {
-            grid[i][j] = newGrid[i][j];
-        }
-    }
-}
-
 int main() {
-    const int screenWidth = 800;
-    const int screenHeight = 600;
-    InitWindow(screenWidth, screenHeight, "Game of Life on Sphere");
+    InitWindow(GameConstants::ScreenWidth, GameConstants::ScreenHeight, "Game of Life on Sphere");
+    
+    srand(static_cast<unsigned int>(time(NULL)));
 
     Camera camera = { 0 };
     camera.position = (Vector3){ 5.0f, 5.0f, 5.0f };
@@ -64,42 +27,60 @@ int main() {
 
     SetTargetFPS(60);
 
-    int lifeGrid[N][M];
-    for (int i = 0; i < N; ++i) {
-        for (int j = 0; j < M; ++j) {
-            lifeGrid[i][j] = rand() % 2;
-        }
-    }
+    GameOfLife game;
+    bool paused = false;
+    float updateTimer = 0.0f;
+    float updateInterval = 0.1f; // Update every 0.1 seconds
 
     while (!WindowShouldClose()) {
+        // Input Handling
+        if (IsKeyPressed(KEY_SPACE)) {
+            paused = !paused;
+        }
+        if (IsKeyPressed(KEY_R)) {
+            game.Reset();
+        }
+
+        // Update Logic
         UpdateCamera(&camera, CAMERA_ORBITAL);
 
+        if (!paused) {
+            updateTimer += GetFrameTime();
+            if (updateTimer >= updateInterval) {
+                game.Update();
+                updateTimer = 0.0f;
+            }
+        }
+
+        // Drawing
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
         BeginMode3D(camera);
 
-        float dTheta = PI / N;
-        float dPhi = 2 * PI / M;
+        float dTheta = PI / GameConstants::GridRows;
+        float dPhi = 2 * PI / GameConstants::GridCols;
 
-        for (int i = 0; i < N; ++i) {
-            for (int j = 0; j < M; ++j) {
-                if (lifeGrid[i][j] == 1) {
+        for (int i = 0; i < GameConstants::GridRows; ++i) {
+            for (int j = 0; j < GameConstants::GridCols; ++j) {
+                if (game.IsAlive(i, j)) {
                     float theta = dTheta * i;
                     float phi = dPhi * j;
-                    Vector3 p = point_on_sphere(2.0f, theta, phi);
+                    Vector3 p = PointOnSphere(GameConstants::SphereRadius, theta, phi);
                     DrawSphere(p, 0.05f, BLACK);
                 }
             }
         }
+        
+        DrawSphereWires((Vector3){0,0,0}, GameConstants::SphereRadius, 16, 16, Fade(LIGHTGRAY, 0.3f));
 
         EndMode3D();
 
         DrawText("Conway's Game of Life on Sphere", 10, 10, 20, DARKGRAY);
+        DrawText("Controls: SPACE to Pause, R to Reset", 10, 40, 10, GRAY);
+        if (paused) DrawText("PAUSED", 10, 60, 20, RED);
 
         EndDrawing();
-
-        updateLifeGrid(lifeGrid);
     }
 
     CloseWindow();
